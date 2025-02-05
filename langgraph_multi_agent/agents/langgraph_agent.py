@@ -9,8 +9,6 @@ from langgraph.pregel import PregelProtocol
 from langgraph.pregel.types import StateSnapshot
 from langgraph.types import StreamMode
 
-from langgraph_multi_agent.agents.agent import Agent
-
 
 AgentInputStrategy = Literal["full_history", "tool_call"]
 """How is information passed to the agent
@@ -94,13 +92,19 @@ def _get_agent_output_as_tool_response(output: MessagesState):
     return {"messages": [tool_msg]}
 
 
-class LangGraphAgent(Agent):
+class LangGraphAgent(PregelProtocol):
     """Agent based on a LangGraph agent.
 
     Can be used with any agent that implements LangGraph PregelProtocol,
     including LangGraph's `StateGraph` (e.g., the prebuilt `create_react_agent`) and
     `RemoteGraph` (for interacting with agents deployed with LangGraph Platform)"""
 
+    name: str
+    """Agent name. Will be used as a node name in the multi-agent workflow."""
+    is_entrypoint: bool
+    """Whether the agent serves as an entrypoint in the multi-agent system"""
+    always_handoff_to: list[str] | None
+    """List of agent names (nodes) to always add edges to"""
     agent: PregelProtocol
     """Underlying agent implementation."""
     agent_input_strategy: AgentInputStrategy = "full_history"
