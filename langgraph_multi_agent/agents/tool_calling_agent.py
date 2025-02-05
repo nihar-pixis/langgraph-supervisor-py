@@ -12,7 +12,7 @@ from langgraph_multi_agent.agents.langgraph_agent import (
     AgentInputStrategy,
     AgentOutputStrategy,
 )
-from langgraph_multi_agent.handoff import make_handoff_tool
+from langgraph_multi_agent.handoff import HandoffConfig, create_handoff_tool
 
 
 class ToolCallingAgent(LangGraphAgent):
@@ -26,8 +26,8 @@ class ToolCallingAgent(LangGraphAgent):
     """Prompt to use for the agent"""
     state_schema: StateSchemaType
     """State schema to use for the agent"""
-    can_handoff_to: list[str] | None
-    """List of agent names (nodes) to hand off to (via tools)"""
+    can_handoff_to: list[str | HandoffConfig] | None
+    """List of agent names (nodes) to hand off to (via tools) or HandoffConfig objects"""
     parallel_tool_calls: bool | None
     """Whether the model is allowed to call tools in parallel.
         If None, defaults to the model's default behavior.
@@ -43,7 +43,7 @@ class ToolCallingAgent(LangGraphAgent):
         prompt: Prompt | None = None,
         state_schema: StateSchemaType = None,
         is_entrypoint: bool = False,
-        can_handoff_to: list[str] | None = None,
+        can_handoff_to: list[str | HandoffConfig] | None = None,
         always_handoff_to: list[str] | None = None,
         agent_input_strategy: AgentInputStrategy = "full_history",
         agent_output_strategy: AgentOutputStrategy = "full_history",
@@ -53,15 +53,21 @@ class ToolCallingAgent(LangGraphAgent):
         self.tools = tools
         self.prompt = prompt
         self.state_schema = state_schema
-        self.can_handoff_to = can_handoff_to
         self.parallel_tool_calls = parallel_tool_calls
+        self.can_handoff_to = can_handoff_to
 
         # create handoff tools, if relevant
         handoff_tools = []
         if self.can_handoff_to is not None:
+            self.handoff_configs = [
+                HandoffConfig(agent_name=handoff_to)
+                if isinstance(handoff_to, str)
+                else handoff_to
+                for handoff_to in self.can_handoff_to
+            ]
             handoff_tools = [
-                make_handoff_tool(agent_name=agent_name)
-                for agent_name in self.can_handoff_to
+                create_handoff_tool(handoff_config=handoff_config)
+                for handoff_config in self.handoff_configs
             ]
 
         all_tools = self.tools + handoff_tools
@@ -88,6 +94,15 @@ class ToolCallingAgent(LangGraphAgent):
         self._validate()
 
     def _validate(self):
+        if (
+            self.agent_output_strategy == "tool_response"
+            and self.agent_input_strategy != "tool_call"
+        ):
+            raise ValueError(
+                "`agent_output_strategy='tool_response'` must be used with `agent_input_strategy='tool_call'`, got "
+                f"`agent_input_strategy='{self.agent_input_strategy}'` and `agent_output_strategy='{self.agent_output_strategy}'`"
+            )
+
         if self.agent_output_strategy == "last_message" and self.can_handoff_to:
             raise ValueError(
                 "Cannot use `agent_output_strategy='last_message'` when handoffs are enabled. "
