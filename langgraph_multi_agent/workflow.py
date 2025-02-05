@@ -2,6 +2,7 @@ from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.prebuilt.chat_agent_executor import StateSchemaType
 
 from langgraph_multi_agent.agents import LangGraphAgent, ToolCallingAgent
+from langgraph_multi_agent.handoff import HandoffConfig
 
 
 def _validate_agent_handoffs(agent_name_to_agent: dict[str, LangGraphAgent]) -> None:
@@ -9,7 +10,10 @@ def _validate_agent_handoffs(agent_name_to_agent: dict[str, LangGraphAgent]) -> 
         if not isinstance(agent, ToolCallingAgent) or not agent.can_handoff_to:
             continue
 
-        for handoff_config in agent.handoff_configs:
+        for handoff_config in agent.can_handoff_to:
+            if isinstance(handoff_config, str):
+                handoff_config = HandoffConfig(agent_name=handoff_config)
+
             target_agent = agent_name_to_agent.get(handoff_config.agent_name)
             if not target_agent:
                 raise ValueError(

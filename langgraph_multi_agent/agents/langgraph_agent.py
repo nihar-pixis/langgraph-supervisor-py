@@ -150,6 +150,10 @@ class LangGraphAgent(Agent):
                 f"Needs to be one of {AgentOutputStrategy.__args__}"
             )
 
+    def copy(self, **update: dict[str, Any]) -> "LangGraphAgent":
+        attrs = {**self.__dict__, **update}
+        return self.__class__(**attrs)
+
     def invoke(
         self,
         input: dict[str, Any] | Any,

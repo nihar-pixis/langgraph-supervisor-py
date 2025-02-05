@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Any
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt.chat_agent_executor import (
@@ -59,7 +59,7 @@ class ToolCallingAgent(LangGraphAgent):
         # create handoff tools, if relevant
         handoff_tools = []
         if self.can_handoff_to is not None:
-            self.handoff_configs = [
+            handoff_configs = [
                 HandoffConfig(agent_name=handoff_to)
                 if isinstance(handoff_to, str)
                 else handoff_to
@@ -67,7 +67,7 @@ class ToolCallingAgent(LangGraphAgent):
             ]
             handoff_tools = [
                 create_handoff_tool(handoff_config=handoff_config)
-                for handoff_config in self.handoff_configs
+                for handoff_config in handoff_configs
             ]
 
         all_tools = self.tools + handoff_tools
@@ -108,3 +108,9 @@ class ToolCallingAgent(LangGraphAgent):
                 "Cannot use `agent_output_strategy='last_message'` when handoffs are enabled. "
                 "Please use `agent_output_strategy='full_history'` or `agent_output_strategy='tool_response'` instead."
             )
+
+    def copy(self, **update: dict[str, Any]) -> "ToolCallingAgent":
+        existing_attrs = {**self.__dict__}
+        existing_attrs.pop("agent", None)
+        attrs = {**existing_attrs, **update}
+        return self.__class__(**attrs)
