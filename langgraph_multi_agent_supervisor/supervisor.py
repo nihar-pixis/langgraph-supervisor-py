@@ -1,13 +1,17 @@
-from dataclasses import dataclass
 from typing import Callable, Literal
 
 from langchain_core.tools import BaseTool
 from langchain_core.language_models import LanguageModelLike
 from langgraph.pregel import PregelProtocol
 from langgraph.graph import StateGraph, MessagesState, START
-from langgraph.prebuilt.chat_agent_executor import StateSchemaType, Prompt
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt.chat_agent_executor import (
+    StateSchemaType,
+    Prompt,
+    create_react_agent,
+)
 
-from langgraph_multi_agent_supervisor.agent import NamedAgent, create_agent
+from langgraph_multi_agent_supervisor.handoff import create_handoff_tool
 
 
 AgentOutputStrategy = Literal["full_history", "last_message"]
@@ -38,7 +42,7 @@ def _make_call_agent(
 
 
 def create_supervisor(
-    agents: list[NamedAgent],
+    agents: list[CompiledStateGraph],
     *,
     model: LanguageModelLike,
     tools: list[Callable | BaseTool] | None = None,
@@ -61,22 +65,27 @@ def create_supervisor(
         agent_output_strategy: How the agent output is added to the entire message history in the multi-agent workflow
         supervisor_name: Name of the supervisor node
     """
-    supervisor_agent = create_agent(
+    handoff_tools = [create_handoff_tool(agent_name=agent.name) for agent in agents]
+    all_tools = (tools or []) + handoff_tools
+    supervisor_agent = create_react_agent(
         name=supervisor_name,
-        model=model,
-        tools=tools or [],
+        model=model.bind_tools(all_tools, parallel_tool_calls=False),
+        tools=all_tools,
         prompt=prompt,
-        can_handoff_to=[agent.name for agent in agents],
         state_schema=state_schema,
     )
 
     builder = StateGraph(state_schema or MessagesState)
-    builder.add_node(supervisor_agent.name, supervisor_agent.agent)
+    builder.add_node(supervisor_agent)
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
-        builder.add_node(
-            agent.name, _make_call_agent(agent.agent, agent_output_strategy)
-        )
+        if agent.name == "LangGraph":
+            raise ValueError(
+                "Please provide an agent name via `create_react_agent(..., name=agent_name)` "
+                "or via `graph.compile(name=name)`."
+            )
+
+        builder.add_node(agent.name, _make_call_agent(agent, agent_output_strategy))
         if not is_router:
             builder.add_edge(agent.name, supervisor_agent.name)
 
