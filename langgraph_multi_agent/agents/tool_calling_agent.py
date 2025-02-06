@@ -94,15 +94,6 @@ class ToolCallingAgent(LangGraphAgent):
         self._validate()
 
     def _validate(self):
-        if (
-            self.agent_output_strategy == "tool_response"
-            and self.agent_input_strategy != "tool_call"
-        ):
-            raise ValueError(
-                "`agent_output_strategy='tool_response'` must be used with `agent_input_strategy='tool_call'`, got "
-                f"`agent_input_strategy='{self.agent_input_strategy}'` and `agent_output_strategy='{self.agent_output_strategy}'`"
-            )
-
         if self.agent_output_strategy == "last_message" and self.can_handoff_to:
             raise ValueError(
                 "Cannot use `agent_output_strategy='last_message'` when handoffs are enabled. "

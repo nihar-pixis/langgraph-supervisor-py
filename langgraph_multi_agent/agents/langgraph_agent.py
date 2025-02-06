@@ -1,95 +1,19 @@
 from typing import Any, AsyncIterator, Iterator, Literal
 
-from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.runnables.graph import Graph as DrawableGraph
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph.message import MessagesState
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.pregel import PregelProtocol
 from langgraph.pregel.types import StateSnapshot
 from langgraph.types import StreamMode
 
 
-AgentInputStrategy = Literal["full_history", "tool_call"]
-"""How is information passed to the agent
-
-- `full_history`: pass the entire message history of the multi-agent workflow
-    as an input to the current agent
-- `tool_call`: pass `task_description` populated via a tool call by the previous agent
-    during the handoff
-"""
-
-AgentOutputStrategy = Literal["full_history", "last_message", "tool_response"]
+AgentOutputStrategy = Literal["full_history", "last_message"]
 """How is the agent output added to the entire message history in the multi-agent workflow
 
 - `full_history`: return the entire inner message history from the agent
 - `last_message`: return the last message from the agent's inner history
-- `tool_response`: return the last message from the agent's inner history as a ToolMessage
-    should be used only when the agent is invoked as a tool call.
 """
-
-
-def _get_agent_input_from_tool_call(
-    input: MessagesState, agent_name: str
-) -> MessagesState:
-    # by this point the multi-agent workflow state
-    # will contain an AI message w/ handoff tool call AND a tool message
-    # returned by the handoff tool
-    if len(input["messages"]) < 2:
-        raise ValueError(
-            f"To invoke the agent as a tool, the input must have at least two messages (AI message w/ tool calls and a corresponding tool message), got {input['messages']}"
-        )
-
-    last_ai_message = input["messages"][-2]
-    last_tool_message = input["messages"][-1]
-    if last_ai_message.type != "ai" or last_tool_message.type != "tool":
-        raise ValueError(
-            f"To invoke the agent as a tool, the last two messages in the input must be AI message w/ tool calls and a corresponding tool message, got {input['messages'][-2:]}"
-        )
-
-    if len(last_ai_message.tool_calls) != 1:
-        raise ValueError(
-            f"To invoke the agent as a tool, the last AI message must have exactly one tool call, got {len(last_ai_message.tool_calls)}"
-        )
-
-    tool_call = last_ai_message.tool_calls[-1]
-    if agent_name not in tool_call["name"]:
-        raise ValueError(
-            f"To invoke the agent as a tool, the last AI message must have a tool call with the name {agent_name}, got {last_ai_message.tool_calls[-1]['name']}"
-        )
-
-    if "task_description" not in tool_call["args"]:
-        raise ValueError(
-            f"To invoke the agent as a tool, the last AI message must have a tool call with task_description in the args, got the following args: {last_ai_message.tool_calls[-1]['args']}"
-        )
-
-    task_description = tool_call["args"]["task_description"]
-    return {
-        "messages": [
-            HumanMessage(
-                content=task_description,
-                additional_kwargs={
-                    "tool_call_id": tool_call["id"],
-                    "tool_call_name": tool_call["name"],
-                    "tool_message_id": last_tool_message.id,
-                },
-            )
-        ]
-    }
-
-
-def _get_agent_output_as_tool_response(output: MessagesState):
-    tool_call_info = output["messages"][0].additional_kwargs
-    tool_msg = ToolMessage(
-        content=output["messages"][-1].content,
-        name=tool_call_info["tool_call_name"],
-        tool_call_id=tool_call_info["tool_call_id"],
-        # NOTE: we're reusing the same message ID to replace the tool message
-        # returned by the handoff tool. This assumes the state is based on MessagesState
-        # or is using a `messages` key with `add_messages` reducer
-        id=tool_call_info["tool_message_id"],
-    )
-    return {"messages": [tool_msg]}
 
 
 class LangGraphAgent(PregelProtocol):
@@ -107,8 +31,6 @@ class LangGraphAgent(PregelProtocol):
     """Whether the agent serves as an entrypoint in the multi-agent system"""
     always_handoff_to: str | None
     """List of agent names (nodes) to always add edges to"""
-    agent_input_strategy: AgentInputStrategy = "full_history"
-    """How is information passed to the agent"""
     agent_output_strategy: AgentOutputStrategy = "full_history"
     """How is the agent output added to the entire message history in the multi-agent workflow"""
 
@@ -119,14 +41,12 @@ class LangGraphAgent(PregelProtocol):
         agent: PregelProtocol,
         is_entrypoint: bool = False,
         always_handoff_to: str | None = None,
-        agent_input_strategy: AgentInputStrategy = "full_history",
         agent_output_strategy: AgentOutputStrategy = "full_history",
     ):
         self.name = name
         self.agent = agent
         self.is_entrypoint = is_entrypoint
         self.always_handoff_to = always_handoff_to
-        self.agent_input_strategy = agent_input_strategy
         self.agent_output_strategy = agent_output_strategy
 
     def _get_agent_input(self, input: dict[str, Any]) -> dict[str, Any]:
@@ -146,8 +66,6 @@ class LangGraphAgent(PregelProtocol):
             return output
         elif self.agent_output_strategy == "last_message":
             return {"messages": output["messages"][-1]}
-        elif self.agent_output_strategy == "tool_response":
-            return _get_agent_output_as_tool_response(output)
         else:
             raise ValueError(
                 f"Invalid agent output strategy: {self.agent_output_strategy}. "
@@ -164,7 +82,6 @@ class LangGraphAgent(PregelProtocol):
         config: RunnableConfig | None = None,
         **kwargs,
     ) -> dict[str, Any] | Any:
-        input = self._get_agent_input(input)
         output = self.agent.invoke(input, config, **kwargs)
         return self._get_agent_output(output)
 
@@ -174,7 +91,6 @@ class LangGraphAgent(PregelProtocol):
         config: RunnableConfig | None = None,
         **kwargs,
     ) -> dict[str, Any] | Any:
-        input = self._get_agent_input(input)
         output = await self.agent.ainvoke(input, config, **kwargs)
         return self._get_agent_output(output)
 
