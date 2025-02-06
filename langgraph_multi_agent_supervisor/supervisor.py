@@ -2,7 +2,6 @@ from typing import Callable, Literal
 
 from langchain_core.tools import BaseTool
 from langchain_core.language_models import LanguageModelLike
-from langgraph.pregel import PregelProtocol
 from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt.chat_agent_executor import (
@@ -14,29 +13,33 @@ from langgraph.prebuilt.chat_agent_executor import (
 from langgraph_multi_agent_supervisor.handoff import create_handoff_tool
 
 
-AgentOutputStrategy = Literal["full_history", "last_message"]
-"""How is the agent output added to the entire message history in the multi-agent workflow
+OutputMode = Literal["full_history", "last_message"]
+"""Mode for adding agent outputs to the message history in the multi-agent workflow
 
-- `full_history`: return the entire inner message history from the agent
-- `last_message`: return the last message from the agent's inner history
+- `full_history`: add the entire agent message history
+- `last_message`: add only the last message
 """
 
 
 def _make_call_agent(
-    agent: PregelProtocol, agent_output_strategy: AgentOutputStrategy
+    agent: CompiledStateGraph, agent_output_mode: OutputMode
 ) -> Callable:
-    if agent_output_strategy not in AgentOutputStrategy.__args__:
+    if agent_output_mode not in OutputMode.__args__:
         raise ValueError(
-            f"Invalid agent output strategy: {agent_output_strategy}. "
-            f"Needs to be one of {AgentOutputStrategy.__args__}"
+            f"Invalid agent output mode: {agent_output_mode}. "
+            f"Needs to be one of {OutputMode.__args__}"
         )
 
-    def call_agent(state):
+    def call_agent(state: MessagesState) -> MessagesState:
         output = agent.invoke(state)
-        if agent_output_strategy == "full_history":
+        if agent_output_mode == "full_history":
             return output
-        elif agent_output_strategy == "last_message":
+        elif agent_output_mode == "last_message":
             return {"messages": output["messages"][-1]}
+        raise ValueError(
+            f"Invalid agent output mode: {agent_output_mode}. "
+            f"Needs to be one of {OutputMode.__args__}"
+        )
 
     return call_agent
 
@@ -49,22 +52,45 @@ def create_supervisor(
     prompt: Prompt | None = None,
     state_schema: StateSchemaType | None = None,
     is_router: bool = False,
-    agent_output_strategy: AgentOutputStrategy = "last_message",
+    agent_output_mode: OutputMode = "last_message",
     supervisor_name: str = "supervisor",
 ) -> StateGraph:
     """Create a multi-agent supervisor.
 
     Args:
-        agents: List of agents to supervise
+        agents: List of agents to manage
         model: Language model to use for the supervisor
         tools: Tools to use for the supervisor
-        prompt: Prompt to use for the supervisor
-        state_schema: State schema to use for the supervisor graph
+        prompt: Optional prompt to use for the supervisor. Can be one of:
+            - str: This is converted to a SystemMessage and added to the beginning of the list of messages in state["messages"].
+            - SystemMessage: this is added to the beginning of the list of messages in state["messages"].
+            - Callable: This function should take in full graph state and the output is then passed to the language model.
+            - Runnable: This runnable should take in full graph state and the output is then passed to the language model.
+        state_schema: State schema to use for the supervisor graph. Defaults to MessagesState
         is_router: Whether the supervisor is a router (i.e. agents can respond to the user directly),
-            or agents always return control back to the supervisor
-        agent_output_strategy: How the agent output is added to the entire message history in the multi-agent workflow
-        supervisor_name: Name of the supervisor node
+            or agents always return control back to the supervisor. Defaults to False.
+        agent_output_mode: Mode for adding agent outputs to the message history in the multi-agent workflow.
+            Can be one of:
+            - `full_history`: add the entire agent message history
+            - `last_message`: add only the last message
+            Defaults to `last_message`
+        supervisor_name: Name of the supervisor node. Defaults to "supervisor"
     """
+    agent_names = set()
+    for agent in agents:
+        if agent.name is None or agent.name == "LangGraph":
+            raise ValueError(
+                "Please specify a name when you create your agent, either via `create_react_agent(..., name=agent_name)` "
+                "or via `graph.compile(name=name)`."
+            )
+
+        if agent.name in agent_names:
+            raise ValueError(
+                f"Agent with name '{agent.name}' already exists. Agent names must be unique."
+            )
+
+        agent_names.add(agent.name)
+
     handoff_tools = [create_handoff_tool(agent_name=agent.name) for agent in agents]
     all_tools = (tools or []) + handoff_tools
     supervisor_agent = create_react_agent(
@@ -79,13 +105,7 @@ def create_supervisor(
     builder.add_node(supervisor_agent)
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
-        if agent.name == "LangGraph":
-            raise ValueError(
-                "Please provide an agent name via `create_react_agent(..., name=agent_name)` "
-                "or via `graph.compile(name=name)`."
-            )
-
-        builder.add_node(agent.name, _make_call_agent(agent, agent_output_strategy))
+        builder.add_node(agent.name, _make_call_agent(agent, agent_output_mode))
         if not is_router:
             builder.add_edge(agent.name, supervisor_agent.name)
 

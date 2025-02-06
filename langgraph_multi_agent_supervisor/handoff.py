@@ -1,12 +1,21 @@
 from typing_extensions import Annotated
 
 from langchain_core.messages import ToolMessage
-from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.tools import tool, BaseTool, InjectedToolCallId
 from langgraph.types import Command
 
 
-def create_handoff_tool(*, agent_name: str):
-    """Create a tool that can handoff control to the requested agent"""
+def create_handoff_tool(*, agent_name: str) -> BaseTool:
+    """Create a tool that can handoff control to the requested agent.
+
+    Args:
+        agent_name: The name of the agent to handoff control to, i.e.
+            the name of the agent node in the multi-agent graph.
+            Agent names should be simple, clear and unique, preferably in snake_case,
+            although you are only limited to the names accepted by LangGraph
+            nodes as well as the tool names accepted by LLM providers
+            (the tool name will look like this: `transfer_to_<agent_name>`).
+    """
     tool_name = f"transfer_to_{agent_name}"
 
     @tool(tool_name)
