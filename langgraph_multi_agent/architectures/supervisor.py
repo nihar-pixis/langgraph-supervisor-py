@@ -34,7 +34,7 @@ def create_supervisor(
     ]
 
     for agent in agents:
-        always_handoff_to = [supervisor_name] if not is_router else []
+        always_handoff_to = supervisor_name if not is_router else None
         if agents_as_tools:
             agent_input_strategy = "tool_call"
             agent_output_strategy = "tool_response"

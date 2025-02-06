@@ -46,7 +46,7 @@ def create_multi_agent_workflow(
             builder.add_edge(START, agent.name)
 
         # useful for supervisor-style architectures
-        for target in agent.always_handoff_to or []:
-            builder.add_edge(agent.name, target)
+        if agent.always_handoff_to:
+            builder.add_edge(agent.name, agent.always_handoff_to)
 
     return builder
