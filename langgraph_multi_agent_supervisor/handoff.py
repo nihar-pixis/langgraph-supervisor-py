@@ -6,7 +6,7 @@ from langgraph.types import Command
 
 
 def create_handoff_tool(*, agent_name: str):
-    """Create a tool that can return handoff via a Command"""
+    """Create a tool that can handoff control to the requested agent"""
     tool_name = f"transfer_to_{agent_name}"
 
     @tool(tool_name)
