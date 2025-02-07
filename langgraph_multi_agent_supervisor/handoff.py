@@ -47,14 +47,18 @@ def create_handoff_tool(*, agent_name: str) -> BaseTool:
     return handoff_to_agent
 
 
-def create_handoff_back_messages(agent_name: str, supervisor_name: str) -> tuple[AIMessage, ToolMessage]:
+def create_handoff_back_messages(
+    agent_name: str, supervisor_name: str
+) -> tuple[AIMessage, ToolMessage]:
     """Create a pair of (AIMessage, ToolMessage) to add to the message history when returning control to the supervisor."""
     tool_call_id = str(uuid.uuid4())
     tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
     tool_calls = [ToolCall(name=tool_name, args={}, id=tool_call_id)]
     return (
         AIMessage(
-            content=f"Transferring back to {supervisor_name}", tool_calls=tool_calls, name=agent_name
+            content=f"Transferring back to {supervisor_name}",
+            tool_calls=tool_calls,
+            name=agent_name,
         ),
         ToolMessage(
             content=f"Successfully transferred back to {supervisor_name}",

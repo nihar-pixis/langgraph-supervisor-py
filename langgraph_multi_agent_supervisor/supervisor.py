@@ -3,9 +3,10 @@ from typing import Callable, Literal
 
 from langchain_core.tools import BaseTool
 from langchain_core.language_models import LanguageModelLike
-from langgraph.graph import StateGraph, MessagesState, START
+from langgraph.graph import StateGraph, START
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt.chat_agent_executor import (
+    AgentState,
     StateSchemaType,
     Prompt,
     create_react_agent,
@@ -64,7 +65,7 @@ def create_supervisor(
     model: LanguageModelLike,
     tools: list[Callable | BaseTool] | None = None,
     prompt: Prompt | None = None,
-    state_schema: StateSchemaType = MessagesState,
+    state_schema: StateSchemaType = AgentState,
     agents_respond_directly: bool = False,
     output_mode: OutputMode = "last_message",
     add_handoff_back_messages: bool = True,
@@ -114,7 +115,10 @@ def create_supervisor(
     handoff_tools = [create_handoff_tool(agent_name=agent.name) for agent in agents]
     all_tools = (tools or []) + handoff_tools
 
-    if hasattr(model, "bind_tools") and "parallel_tool_calls" in inspect.signature(model.bind_tools).parameters:
+    if (
+        hasattr(model, "bind_tools")
+        and "parallel_tool_calls" in inspect.signature(model.bind_tools).parameters
+    ):
         model = model.bind_tools(all_tools, parallel_tool_calls=False)
 
     supervisor_agent = create_react_agent(
