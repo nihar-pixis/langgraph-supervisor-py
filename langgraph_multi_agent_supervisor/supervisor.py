@@ -36,7 +36,7 @@ def _make_call_agent(
             f"Needs to be one of {OutputMode.__args__}"
         )
 
-    def call_agent(state: MessagesState) -> MessagesState:
+    def call_agent(state: dict) -> dict:
         output = agent.invoke(state)
         messages = output["messages"]
         if agent_output_mode == "full_history":
