@@ -1,6 +1,7 @@
 from typing_extensions import Annotated
+import uuid
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage, ToolCall
 from langchain_core.tools import tool, BaseTool, InjectedToolCallId
 from langgraph.types import Command
 
@@ -35,3 +36,20 @@ def create_handoff_tool(*, agent_name: str) -> BaseTool:
         )
 
     return handoff_to_agent
+
+
+def create_handoff_back_messages(supervisor_name: str) -> tuple[AIMessage, ToolMessage]:
+    """Create a pair of (AIMessage, ToolMessage) to add to the message history when returning control to the supervisor."""
+    tool_call_id = str(uuid.uuid4())
+    tool_name = f"transfer_back_to_{supervisor_name}"
+    tool_calls = [ToolCall(name=tool_name, args={}, id=tool_call_id)]
+    return (
+        AIMessage(
+            content=f"Transferring back to {supervisor_name}", tool_calls=tool_calls
+        ),
+        ToolMessage(
+            content=f"Successfully transferred back to {supervisor_name}",
+            name=tool_name,
+            tool_call_id=tool_call_id,
+        ),
+    )

@@ -10,7 +10,10 @@ from langgraph.prebuilt.chat_agent_executor import (
     create_react_agent,
 )
 
-from langgraph_multi_agent_supervisor.handoff import create_handoff_tool
+from langgraph_multi_agent_supervisor.handoff import (
+    create_handoff_tool,
+    create_handoff_back_messages,
+)
 
 
 OutputMode = Literal["full_history", "last_message"]
@@ -22,7 +25,10 @@ OutputMode = Literal["full_history", "last_message"]
 
 
 def _make_call_agent(
-    agent: CompiledStateGraph, agent_output_mode: OutputMode
+    agent: CompiledStateGraph,
+    agent_output_mode: OutputMode,
+    add_handoff_back: bool,
+    supervisor_name: str,
 ) -> Callable:
     if agent_output_mode not in OutputMode.__args__:
         raise ValueError(
@@ -32,14 +38,21 @@ def _make_call_agent(
 
     def call_agent(state: MessagesState) -> MessagesState:
         output = agent.invoke(state)
+        messages = output["messages"]
         if agent_output_mode == "full_history":
-            return output
+            pass
         elif agent_output_mode == "last_message":
-            return {"messages": output["messages"][-1]}
-        raise ValueError(
-            f"Invalid agent output mode: {agent_output_mode}. "
-            f"Needs to be one of {OutputMode.__args__}"
-        )
+            messages = messages[-1:]
+        else:
+            raise ValueError(
+                f"Invalid agent output mode: {agent_output_mode}. "
+                f"Needs to be one of {OutputMode.__args__}"
+            )
+
+        if add_handoff_back:
+            messages.extend(create_handoff_back_messages(supervisor_name))
+
+        return {"messages": messages}
 
     return call_agent
 
@@ -53,6 +66,7 @@ def create_supervisor(
     state_schema: StateSchemaType | None = None,
     is_router: bool = False,
     agent_output_mode: OutputMode = "last_message",
+    add_handoff_back: bool = False,
     supervisor_name: str = "supervisor",
 ) -> StateGraph:
     """Create a multi-agent supervisor.
@@ -105,7 +119,12 @@ def create_supervisor(
     builder.add_node(supervisor_agent)
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
-        builder.add_node(agent.name, _make_call_agent(agent, agent_output_mode))
+        builder.add_node(
+            agent.name,
+            _make_call_agent(
+                agent, agent_output_mode, add_handoff_back, supervisor_name
+            ),
+        )
         if not is_router:
             builder.add_edge(agent.name, supervisor_agent.name)
 
