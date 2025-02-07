@@ -5,11 +5,11 @@ A Python library for creating hierarchical multi-agent systems using [LangGraph]
 ## Features
 
 - 🤖 **Create a supervisor agent** to orchestrate multiple specialized agents
-- 🔄 **Support for both router and orchestrator patterns** for flexible control flow
-- 🛠️ **Tool-based agent handoff mechanism** for seamless communication between agents
-- 📝 **Flexible message history management** for complete conversation control
+- 🔄 **Support for both router and orchestrator patterns**
+- 🛠️ **Tool-based agent handoff mechanism** for communication between agents
+- 📝 **Flexible message history management** for conversation control
 
-This library is built on top of [LangGraph](https://github.com/langchain-ai/langgraph), a powerful framework for building agent applications, and comes with state-of-the-art support for [streaming](https://langchain-ai.github.io/langgraph/how-tos/#streaming), [short- and long-term memory](https://langchain-ai.github.io/langgraph/concepts/memory/) and [human-in-the-loop](https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/)
+This library is built on top of [LangGraph](https://github.com/langchain-ai/langgraph), a powerful framework for building agent applications, and comes with out-of-box support for [streaming](https://langchain-ai.github.io/langgraph/how-tos/#streaming), [short-term and long-term memory](https://langchain-ai.github.io/langgraph/concepts/memory/) and [human-in-the-loop](https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/)
 
 ## Installation
 
@@ -17,19 +17,17 @@ This library is built on top of [LangGraph](https://github.com/langchain-ai/lang
 pip install langgraph-multi-agent-supervisor
 ```
 
-## Quick Start
+## Quickstart
 
 Here's a simple example of a supervisor managing two specialized agents:
 
 ```bash
-pip install langgraph-multi-agent-supervisor langchain-openai langchain-community
+pip install langgraph-multi-agent-supervisor langchain-openai
 
 export OPENAI_API_KEY=<your_api_key>
-export TAVILY_API_KEY=<your_api_key>
 ```
 
 ```python
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_openai import ChatOpenAI
 
 from langgraph_multi_agent_supervisor import create_supervisor
@@ -47,6 +45,17 @@ def multiply(a: float, b: float) -> float:
     """Multiply two numbers."""
     return a * b
 
+def web_search(query: str) -> str:
+    """Search the web for information."""
+    return (
+        "Here are the headcounts for each of the FAANG companies in 2024:\n"
+        "1. **Facebook (Meta)**: 67,317 employees.\n"
+        "2. **Apple**: 164,000 employees.\n"
+        "3. **Amazon**: 1,551,000 employees.\n"
+        "4. **Netflix**: 14,000 employees.\n"
+        "5. **Google (Alphabet)**: 181,269 employees."
+    )
+
 math_agent = create_react_agent(
     model=model,
     tools=[add, multiply],
@@ -56,7 +65,7 @@ math_agent = create_react_agent(
 
 research_agent = create_react_agent(
     model=model,
-    tools=[TavilySearchResults()],
+    tools=[web_search],
     name="research_expert",
     prompt="You are a world class researcher with access to web search. Do not do any math."
 )
@@ -70,7 +79,14 @@ workflow = create_supervisor(
 
 # Compile and run
 app = workflow.compile()
-result = app.invoke({"messages": [{"role": "user", "content": "what's the combined headcount of the FAANG companies in 2024?"}]})
+result = app.invoke({
+    "messages": [
+        {
+            "role": "user",
+            "content": "what's the combined headcount of the FAANG companies in 2024?"
+        }
+    ]
+})
 ```
 
 ## Agent Interaction Patterns

@@ -1,3 +1,4 @@
+import inspect
 from typing import Callable, Literal
 
 from langchain_core.tools import BaseTool
@@ -26,26 +27,26 @@ OutputMode = Literal["full_history", "last_message"]
 
 def _make_call_agent(
     agent: CompiledStateGraph,
-    agent_output_mode: OutputMode,
+    output_mode: OutputMode,
     add_handoff_back_messages: bool,
     supervisor_name: str,
-) -> Callable:
-    if agent_output_mode not in OutputMode.__args__:
+) -> Callable[[dict], dict]:
+    if output_mode not in OutputMode.__args__:
         raise ValueError(
-            f"Invalid agent output mode: {agent_output_mode}. "
+            f"Invalid agent output mode: {output_mode}. "
             f"Needs to be one of {OutputMode.__args__}"
         )
 
     def call_agent(state: dict) -> dict:
         output = agent.invoke(state)
         messages = output["messages"]
-        if agent_output_mode == "full_history":
+        if output_mode == "full_history":
             pass
-        elif agent_output_mode == "last_message":
+        elif output_mode == "last_message":
             messages = messages[-1:]
         else:
             raise ValueError(
-                f"Invalid agent output mode: {agent_output_mode}. "
+                f"Invalid agent output mode: {output_mode}. "
                 f"Needs to be one of {OutputMode.__args__}"
             )
 
@@ -63,9 +64,9 @@ def create_supervisor(
     model: LanguageModelLike,
     tools: list[Callable | BaseTool] | None = None,
     prompt: Prompt | None = None,
-    state_schema: StateSchemaType | None = None,
-    is_router: bool = False,
-    agent_output_mode: OutputMode = "last_message",
+    state_schema: StateSchemaType = MessagesState,
+    agents_respond_directly: bool = False,
+    output_mode: OutputMode = "last_message",
     add_handoff_back_messages: bool = True,
     supervisor_name: str = "supervisor",
 ) -> StateGraph:
@@ -80,18 +81,20 @@ def create_supervisor(
             - SystemMessage: this is added to the beginning of the list of messages in state["messages"].
             - Callable: This function should take in full graph state and the output is then passed to the language model.
             - Runnable: This runnable should take in full graph state and the output is then passed to the language model.
-        state_schema: State schema to use for the supervisor graph. Defaults to MessagesState
-        is_router: Whether the supervisor is a router (i.e. agents can respond to the user directly),
-            or agents always return control back to the supervisor. Defaults to False.
-        agent_output_mode: Mode for adding agent outputs to the message history in the multi-agent workflow.
+        state_schema: State schema to use for the supervisor graph.
+        agents_respond_directly: Whether the managed agents are allowed to respond to the user directly
+            or must always return control back to the supervisor.
+            - agents_respond_directly = True (orchestrator mode): agents always return control to the supervisor.
+                The supervisor decides who to call next, or responds to the user.
+            - agents_respond_directly = False (router mode): agents can respond directly to the user.
+                The supervisor just routes the user's message to the appropriate agent.
+        output_mode: Mode for adding managed agents' outputs to the message history in the multi-agent workflow.
             Can be one of:
             - `full_history`: add the entire agent message history
-            - `last_message`: add only the last message
-            Defaults to `last_message`
+            - `last_message`: add only the last message (default)
         add_handoff_back_messages: Whether to add a pair of (AIMessage, ToolMessage) to the message history
             when returning control to the supervisor to indicate that a handoff has occurred.
-            Defaults to True
-        supervisor_name: Name of the supervisor node. Defaults to "supervisor"
+        supervisor_name: Name of the supervisor node.
     """
     agent_names = set()
     for agent in agents:
@@ -110,15 +113,19 @@ def create_supervisor(
 
     handoff_tools = [create_handoff_tool(agent_name=agent.name) for agent in agents]
     all_tools = (tools or []) + handoff_tools
+
+    if hasattr(model, "bind_tools") and "parallel_tool_calls" in inspect.signature(model.bind_tools).parameters:
+        model = model.bind_tools(all_tools, parallel_tool_calls=False)
+
     supervisor_agent = create_react_agent(
         name=supervisor_name,
-        model=model.bind_tools(all_tools, parallel_tool_calls=False),
+        model=model,
         tools=all_tools,
         prompt=prompt,
         state_schema=state_schema,
     )
 
-    builder = StateGraph(state_schema or MessagesState)
+    builder = StateGraph(state_schema)
     builder.add_node(supervisor_agent)
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
@@ -126,12 +133,12 @@ def create_supervisor(
             agent.name,
             _make_call_agent(
                 agent,
-                agent_output_mode,
+                output_mode,
                 add_handoff_back_messages,
                 supervisor_name,
             ),
         )
-        if not is_router:
+        if not agents_respond_directly:
             builder.add_edge(agent.name, supervisor_agent.name)
 
     return builder
