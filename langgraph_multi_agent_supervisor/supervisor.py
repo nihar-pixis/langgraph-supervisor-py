@@ -27,7 +27,7 @@ OutputMode = Literal["full_history", "last_message"]
 def _make_call_agent(
     agent: CompiledStateGraph,
     agent_output_mode: OutputMode,
-    add_handoff_back: bool,
+    add_handoff_back_messages: bool,
     supervisor_name: str,
 ) -> Callable:
     if agent_output_mode not in OutputMode.__args__:
@@ -49,8 +49,8 @@ def _make_call_agent(
                 f"Needs to be one of {OutputMode.__args__}"
             )
 
-        if add_handoff_back:
-            messages.extend(create_handoff_back_messages(supervisor_name))
+        if add_handoff_back_messages:
+            messages.extend(create_handoff_back_messages(agent.name, supervisor_name))
 
         return {"messages": messages}
 
@@ -66,7 +66,7 @@ def create_supervisor(
     state_schema: StateSchemaType | None = None,
     is_router: bool = False,
     agent_output_mode: OutputMode = "last_message",
-    add_handoff_back: bool = False,
+    add_handoff_back_messages: bool = True,
     supervisor_name: str = "supervisor",
 ) -> StateGraph:
     """Create a multi-agent supervisor.
@@ -88,6 +88,9 @@ def create_supervisor(
             - `full_history`: add the entire agent message history
             - `last_message`: add only the last message
             Defaults to `last_message`
+        add_handoff_back_messages: Whether to add a pair of (AIMessage, ToolMessage) to the message history
+            when returning control to the supervisor to indicate that a handoff has occurred.
+            Defaults to True
         supervisor_name: Name of the supervisor node. Defaults to "supervisor"
     """
     agent_names = set()
@@ -122,7 +125,10 @@ def create_supervisor(
         builder.add_node(
             agent.name,
             _make_call_agent(
-                agent, agent_output_mode, add_handoff_back, supervisor_name
+                agent,
+                agent_output_mode,
+                add_handoff_back_messages,
+                supervisor_name,
             ),
         )
         if not is_router:
