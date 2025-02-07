@@ -14,7 +14,7 @@ This library is built on top of [LangGraph](https://github.com/langchain-ai/lang
 ## Installation
 
 ```bash
-pip install langgraph-multi-agent-supervisor
+pip install langgraph-supervisor
 ```
 
 ## Quickstart
@@ -22,7 +22,7 @@ pip install langgraph-multi-agent-supervisor
 Here's a simple example of a supervisor managing two specialized agents:
 
 ```bash
-pip install langgraph-multi-agent-supervisor langchain-openai
+pip install langgraph-supervisor langchain-openai
 
 export OPENAI_API_KEY=<your_api_key>
 ```
@@ -30,7 +30,7 @@ export OPENAI_API_KEY=<your_api_key>
 ```python
 from langchain_openai import ChatOpenAI
 
-from langgraph_multi_agent_supervisor import create_supervisor
+from langgraph_supervisor import create_supervisor
 from langgraph.prebuilt import create_react_agent
 
 model = ChatOpenAI(model="gpt-4o")

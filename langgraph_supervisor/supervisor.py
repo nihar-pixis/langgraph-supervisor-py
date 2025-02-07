@@ -12,7 +12,7 @@ from langgraph.prebuilt.chat_agent_executor import (
     create_react_agent,
 )
 
-from langgraph_multi_agent_supervisor.handoff import (
+from langgraph_supervisor.handoff import (
     create_handoff_tool,
     create_handoff_back_messages,
 )
