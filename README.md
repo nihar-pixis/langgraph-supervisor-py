@@ -124,7 +124,7 @@ Include full message history from an agent:
 ```python
 workflow = create_supervisor(
     agents=[agent1, agent2],
-    agent_output_mode="full_history"
+    output_mode="full_history"
 )
 ```
 
@@ -133,7 +133,7 @@ Include only the final agent response:
 ```python
 workflow = create_supervisor(
     agents=[agent1, agent2],
-    agent_output_mode="last_message"
+    output_mode="last_message"
 )
 ```
 
