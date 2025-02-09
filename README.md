@@ -93,24 +93,24 @@ result = app.invoke({
 
 ### Orchestrator Pattern
 
-In orchestrator mode (`is_router=False`), agents always return control to the supervisor. The supervisor can then decide who to call next, or respond to the user.
+In orchestrator mode (`agents_respond_directly=False`), agents always return control to the supervisor. The supervisor can then decide who to call next, or respond to the user.
 
 ```python
 orchestrator = create_supervisor(
     [agent1, agent2],
-    is_router=False,
+    agents_respond_directly=False,
     ...
 )
 ```
 
 ### Router Pattern
 
-In router mode (`is_router=True`), agents can respond directly to the user. The supervisor just routes the user's message to the appropriate agent.
+In router mode (`agents_respond_directly=True`), agents can respond directly to the user. The supervisor just routes the user's message to the appropriate agent.
 
 ```python
 router = create_supervisor(
     [agent1, agent2],
-    is_router=True,
+    agents_respond_directly=True,
     ...
 )
 ```
