@@ -137,6 +137,34 @@ workflow = create_supervisor(
 )
 ```
 
+## Adding Memory
+
+You can add [short-term](https://langchain-ai.github.io/langgraph/how-tos/persistence/) and [long-term](https://langchain-ai.github.io/langgraph/how-tos/cross-thread-persistence/) [memory](https://langchain-ai.github.io/langgraph/concepts/memory/) to your supervisor multi-agent system. Since `create_supervisor()` returns an instance of `StateGraph` that needs to be compiled before use, you can directly pass a [checkpointer](https://langchain-ai.github.io/langgraph/reference/checkpoints/#langgraph.checkpoint.base.BaseCheckpointSaver) or a [store](https://langchain-ai.github.io/langgraph/reference/store/#langgraph.store.base.BaseStore) instance to the `.compile()` method:
+
+```python
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
+
+checkpointer = InMemorySaver()
+store = InMemoryStore()
+
+model = ...
+research_agent = ...
+math_agent = ...
+
+workflow = create_supervisor(
+    [research_agent, math_agent],
+    model=model,
+    prompt="You are a team supervisor managing a research expert and a math expert.",
+)
+
+# Compile with checkpointer/store
+app = workflow.compile(
+    checkpointer=checkpointer,
+    store=store
+)
+```
+
 ## Multi-level Hierarchies
 
 You can create multi-level hierarchical systems by creating a supervisor that manages multiple supervisors.
