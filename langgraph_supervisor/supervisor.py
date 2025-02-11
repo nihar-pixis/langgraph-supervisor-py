@@ -123,7 +123,7 @@ def create_supervisor(
     )
 
     builder = StateGraph(state_schema)
-    builder.add_node(supervisor_agent)
+    builder.add_node(supervisor_agent, destinations=tuple(agent_names))
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
         builder.add_node(
