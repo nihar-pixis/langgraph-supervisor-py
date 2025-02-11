@@ -5,7 +5,6 @@ A Python library for creating hierarchical multi-agent systems using [LangGraph]
 ## Features
 
 - 🤖 **Create a supervisor agent** to orchestrate multiple specialized agents
-- 🔄 **Support for both router and orchestrator patterns**
 - 🛠️ **Tool-based agent handoff mechanism** for communication between agents
 - 📝 **Flexible message history management** for conversation control
 
@@ -87,32 +86,6 @@ result = app.invoke({
         }
     ]
 })
-```
-
-## Agent Interaction Patterns
-
-### Orchestrator Pattern
-
-In orchestrator mode (`agents_respond_directly=False`), agents always return control to the supervisor. The supervisor can then decide who to call next, or respond to the user.
-
-```python
-orchestrator = create_supervisor(
-    [agent1, agent2],
-    agents_respond_directly=False,
-    ...
-)
-```
-
-### Router Pattern
-
-In router mode (`agents_respond_directly=True`), agents can respond directly to the user. The supervisor just routes the user's message to the appropriate agent.
-
-```python
-router = create_supervisor(
-    [agent1, agent2],
-    agents_respond_directly=True,
-    ...
-)
 ```
 
 ## Message History Management

@@ -66,7 +66,6 @@ def create_supervisor(
     tools: list[Callable | BaseTool] | None = None,
     prompt: Prompt | None = None,
     state_schema: StateSchemaType = AgentState,
-    agents_respond_directly: bool = False,
     output_mode: OutputMode = "last_message",
     add_handoff_back_messages: bool = True,
     supervisor_name: str = "supervisor",
@@ -83,12 +82,6 @@ def create_supervisor(
             - Callable: This function should take in full graph state and the output is then passed to the language model.
             - Runnable: This runnable should take in full graph state and the output is then passed to the language model.
         state_schema: State schema to use for the supervisor graph.
-        agents_respond_directly: Whether the managed agents are allowed to respond to the user directly
-            or must always return control back to the supervisor.
-            - agents_respond_directly = True (orchestrator mode): agents always return control to the supervisor.
-                The supervisor decides who to call next, or responds to the user.
-            - agents_respond_directly = False (router mode): agents can respond directly to the user.
-                The supervisor just routes the user's message to the appropriate agent.
         output_mode: Mode for adding managed agents' outputs to the message history in the multi-agent workflow.
             Can be one of:
             - `full_history`: add the entire agent message history
