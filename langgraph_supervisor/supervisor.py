@@ -135,7 +135,5 @@ def create_supervisor(
                 supervisor_name,
             ),
         )
-        if not agents_respond_directly:
-            builder.add_edge(agent.name, supervisor_agent.name)
 
     return builder
