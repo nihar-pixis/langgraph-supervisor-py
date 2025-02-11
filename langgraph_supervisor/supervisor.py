@@ -135,5 +135,6 @@ def create_supervisor(
                 supervisor_name,
             ),
         )
+        builder.add_edge(agent.name, supervisor_agent.name)
 
     return builder
