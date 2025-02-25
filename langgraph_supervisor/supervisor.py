@@ -1,23 +1,23 @@
 import inspect
 from typing import Callable, Literal
 
-from langchain_core.tools import BaseTool
 from langchain_core.language_models import LanguageModelLike
-from langgraph.graph import StateGraph, START
+from langchain_core.tools import BaseTool
+from langgraph.graph import START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt.chat_agent_executor import (
     AgentState,
-    StateSchemaType,
     Prompt,
+    StateSchemaType,
     create_react_agent,
 )
+from langgraph.pregel import Pregel
 from langgraph.utils.runnable import RunnableCallable
 
 from langgraph_supervisor.handoff import (
-    create_handoff_tool,
     create_handoff_back_messages,
+    create_handoff_tool,
 )
-
 
 OutputMode = Literal["full_history", "last_message"]
 """Mode for adding agent outputs to the message history in the multi-agent workflow
@@ -28,15 +28,14 @@ OutputMode = Literal["full_history", "last_message"]
 
 
 def _make_call_agent(
-    agent: CompiledStateGraph,
+    agent: CompiledStateGraph | Pregel,
     output_mode: OutputMode,
     add_handoff_back_messages: bool,
     supervisor_name: str,
-) -> Callable[[dict], dict]:
+) -> Callable[[dict], dict] | RunnableCallable:
     if output_mode not in OutputMode.__args__:
         raise ValueError(
-            f"Invalid agent output mode: {output_mode}. "
-            f"Needs to be one of {OutputMode.__args__}"
+            f"Invalid agent output mode: {output_mode}. Needs to be one of {OutputMode.__args__}"
         )
 
     def _process_output(output: dict) -> dict:
@@ -71,10 +70,10 @@ def _make_call_agent(
 
 
 def create_supervisor(
-    agents: list[CompiledStateGraph],
+    agents: list[CompiledStateGraph | Pregel],
     *,
     model: LanguageModelLike,
-    tools: list[Callable | BaseTool] | None = None,
+    tools: list[BaseTool | Callable] | None = None,
     prompt: Prompt | None = None,
     state_schema: StateSchemaType = AgentState,
     output_mode: OutputMode = "last_message",
