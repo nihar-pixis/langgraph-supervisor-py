@@ -2,13 +2,16 @@
 
 from typing import Optional
 
+import pytest
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.tools import BaseTool, tool
 from langgraph.prebuilt import create_react_agent
 
 from langgraph_supervisor import create_supervisor
+from langgraph_supervisor.agent_name import AgentNameMode, with_agent_name
 
 
 class FakeChatModel(BaseChatModel):
@@ -30,8 +33,14 @@ class FakeChatModel(BaseChatModel):
         self.idx += 1
         return ChatResult(generations=[generation])
 
-    def bind_tools(self, tools: list[any]) -> "FakeChatModel":
-        return self
+    def bind_tools(self, tools: list[BaseTool]) -> "FakeChatModel":
+        tool_dicts = [
+            {
+                "name": tool.name,
+            }
+            for tool in tools
+        ]
+        return self.bind(tools=tool_dicts)
 
 
 supervisor_messages = [
@@ -137,14 +146,28 @@ math_agent_messages = [
 ]
 
 
-def test_supervisor_basic_workflow() -> None:
+@pytest.mark.parametrize(
+    "include_agent_name,include_individual_agent_name",
+    [
+        (None, None),
+        (None, "inline"),
+        ("inline", None),
+        ("inline", "inline"),
+    ],
+)
+def test_supervisor_basic_workflow(
+    include_agent_name: AgentNameMode | None,
+    include_individual_agent_name: AgentNameMode | None,
+) -> None:
     """Test basic supervisor workflow with two agents."""
 
     # output_mode = "last_message"
+    @tool
     def add(a: float, b: float) -> float:
         """Add two numbers."""
         return a + b
 
+    @tool
     def web_search(query: str) -> str:
         """Search the web for information."""
         return (
@@ -156,20 +179,32 @@ def test_supervisor_basic_workflow() -> None:
             "5. **Google (Alphabet)**: 181,269 employees."
         )
 
+    math_model = FakeChatModel(responses=math_agent_messages)
+    if include_individual_agent_name:
+        math_model = with_agent_name(math_model.bind_tools([add]), include_individual_agent_name)
+
     math_agent = create_react_agent(
-        model=FakeChatModel(responses=math_agent_messages),
+        model=math_model,
         tools=[add],
         name="math_expert",
     )
 
+    research_model = FakeChatModel(responses=research_agent_messages)
+    if include_individual_agent_name:
+        research_model = with_agent_name(
+            research_model.bind_tools([web_search]), include_individual_agent_name
+        )
+
     research_agent = create_react_agent(
-        model=FakeChatModel(responses=research_agent_messages),
+        model=research_model,
         tools=[web_search],
         name="research_expert",
     )
 
     workflow = create_supervisor(
-        [math_agent, research_agent], model=FakeChatModel(responses=supervisor_messages)
+        [math_agent, research_agent],
+        model=FakeChatModel(responses=supervisor_messages),
+        include_agent_name=include_agent_name,
     )
 
     app = workflow.compile()
