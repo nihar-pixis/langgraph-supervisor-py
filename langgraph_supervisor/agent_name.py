@@ -1,8 +1,14 @@
 import re
-from typing import Literal, TypeGuard, cast
+from typing import Literal, Sequence, TypeGuard, cast
 
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    MessageLikeRepresentation,
+    convert_to_messages,
+)
+from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import RunnableLambda
 
 NAME_PATTERN = re.compile(r"<name>(.*?)</name>", re.DOTALL)
@@ -117,7 +123,10 @@ def with_agent_name(
             f"Invalid agent name mode: {agent_name_mode}. Needs to be one of: {AgentNameMode.__args__}"
         )
 
-    def process_input_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
+    def process_input_messages(
+        input: Sequence[MessageLikeRepresentation] | PromptValue,
+    ) -> list[BaseMessage]:
+        messages = convert_to_messages(input)
         return [process_input_message(message) for message in messages]
 
     chain = (
