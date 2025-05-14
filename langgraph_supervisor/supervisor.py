@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Literal, Optional, Type, Union
+from typing import Any, Callable, Literal, Optional, Type, Union, cast, get_args
 
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.runnables import RunnableConfig
@@ -56,9 +56,9 @@ def _make_call_agent(
     add_handoff_back_messages: bool,
     supervisor_name: str,
 ) -> Callable[[dict], dict] | RunnableCallable:
-    if output_mode not in OutputMode.__args__:
+    if output_mode not in get_args(OutputMode):
         raise ValueError(
-            f"Invalid agent output mode: {output_mode}. Needs to be one of {OutputMode.__args__}"
+            f"Invalid agent output mode: {output_mode}. Needs to be one of {get_args(OutputMode)}"
         )
 
     def _process_output(output: dict) -> dict:
@@ -267,7 +267,7 @@ def create_supervisor(
         # Handoff tools should be already provided here
         all_tools = tools or []
     else:
-        handoff_destinations = [
+        handoff_tools = [
             create_handoff_tool(
                 agent_name=agent.name,
                 name=(
@@ -279,12 +279,14 @@ def create_supervisor(
             )
             for agent in agents
         ]
-        all_tools = (tools or []) + handoff_destinations
+        all_tools = (tools or []) + list(handoff_tools)
 
     if _supports_disable_parallel_tool_calls(model):
-        model = model.bind_tools(all_tools, parallel_tool_calls=parallel_tool_calls)
+        model = cast(BaseChatModel, model).bind_tools(
+            all_tools, parallel_tool_calls=parallel_tool_calls
+        )
     else:
-        model = model.bind_tools(all_tools)
+        model = cast(BaseChatModel, model).bind_tools(all_tools)
 
     if include_agent_name:
         model = with_agent_name(model, include_agent_name)

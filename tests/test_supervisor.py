@@ -1,13 +1,14 @@
 """Tests for the supervisor module."""
 
-from typing import Callable, Optional
+from collections.abc import Callable, Sequence
+from typing import Any, Optional, cast
 
 import pytest
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
-from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.language_models.chat_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import create_react_agent
@@ -19,7 +20,7 @@ from langgraph_supervisor.handoff import create_forward_message_tool
 
 class FakeChatModel(BaseChatModel):
     idx: int = 0
-    responses: list[BaseMessage]
+    responses: Sequence[BaseMessage]
 
     @property
     def _llm_type(self) -> str:
@@ -30,16 +31,18 @@ class FakeChatModel(BaseChatModel):
         messages: list[BaseMessage],
         stop: Optional[list[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs,
+        **kwargs: dict[str, Any],
     ) -> ChatResult:
         generation = ChatGeneration(message=self.responses[self.idx])
         self.idx += 1
         return ChatResult(generations=[generation])
 
-    def bind_tools(self, tools: list[BaseTool]) -> "FakeChatModel":
+    def bind_tools(
+        self, tools: Sequence[dict[str, Any] | type | Callable | BaseTool], **kwargs: Any
+    ) -> Runnable[LanguageModelInput, BaseMessage]:
         tool_dicts = [
             {
-                "name": tool.name,
+                "name": tool.name if isinstance(tool, BaseTool) else str(tool),
             }
             for tool in tools
         ]
@@ -182,9 +185,12 @@ def test_supervisor_basic_workflow(
             "5. **Google (Alphabet)**: 181,269 employees."
         )
 
-    math_model = FakeChatModel(responses=math_agent_messages)
+    math_model: FakeChatModel = FakeChatModel(responses=math_agent_messages)
     if include_individual_agent_name:
-        math_model = with_agent_name(math_model.bind_tools([add]), include_individual_agent_name)
+        math_model = cast(
+            FakeChatModel,
+            with_agent_name(math_model.bind_tools([add]), include_individual_agent_name),
+        )
 
     math_agent = create_react_agent(
         model=math_model,
@@ -194,8 +200,9 @@ def test_supervisor_basic_workflow(
 
     research_model = FakeChatModel(responses=research_agent_messages)
     if include_individual_agent_name:
-        research_model = with_agent_name(
-            research_model.bind_tools([web_search]), include_individual_agent_name
+        research_model = cast(
+            FakeChatModel,
+            with_agent_name(research_model.bind_tools([web_search]), include_individual_agent_name),
         )
 
     research_agent = create_react_agent(
@@ -288,13 +295,13 @@ class FakeChatModelWithAssertion(FakeChatModel):
         messages: list[BaseMessage],
         stop: Optional[list[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs,
+        **kwargs: dict[str, Any],
     ) -> ChatResult:
         self.assertion(messages)
         return super()._generate(messages, stop, run_manager, **kwargs)
 
 
-def get_tool_calls(msg):
+def get_tool_calls(msg: BaseMessage) -> list[dict[str, Any]] | None:
     tool_calls = getattr(msg, "tool_calls", None)
     if tool_calls is None:
         return None
@@ -303,7 +310,7 @@ def get_tool_calls(msg):
     ]
 
 
-def as_dict(msg):
+def as_dict(msg: BaseMessage) -> dict[str, Any]:
     return {
         "name": msg.name,
         "content": msg.content,
@@ -313,16 +320,16 @@ def as_dict(msg):
 
 
 class Expectations:
-    def __init__(self, expected: list[dict]):
+    def __init__(self, expected: list[list[dict[str, Any]]]) -> None:
         self.expected = expected.copy()
 
-    def __call__(self, messages: list[BaseMessage]):
+    def __call__(self, messages: list[BaseMessage]) -> None:
         expected = self.expected.pop(0)
         received = [as_dict(m) for m in messages]
         assert expected == received
 
 
-def test_worker_hide_handoffs():
+def test_worker_hide_handoffs() -> None:
     """Test that the supervisor forwards a message to a specific agent and receives the correct response."""
 
     @tool
@@ -330,7 +337,7 @@ def test_worker_hide_handoffs():
         """Echo the input text."""
         return text
 
-    expectations = [
+    expectations: list[list[dict[str, Any]]] = [
         [
             {
                 "name": None,
@@ -417,7 +424,7 @@ def test_worker_hide_handoffs():
     app.invoke({"messages": result["messages"] + [HumanMessage(content="Huh take two?")]})
 
 
-def test_supervisor_message_forwarding():
+def test_supervisor_message_forwarding() -> None:
     """Test that the supervisor forwards a message to a specific agent and receives the correct response."""
 
     @tool
@@ -472,7 +479,7 @@ def test_supervisor_message_forwarding():
 
     result = app.invoke({"messages": [HumanMessage(content="Scooby-dooby-doo")]})
 
-    def get_tool_calls(msg):
+    def get_tool_calls(msg: BaseMessage) -> list[dict[str, Any]] | None:
         tool_calls = getattr(msg, "tool_calls", None)
         if tool_calls is None:
             return None
@@ -557,7 +564,7 @@ def test_metadata_passed_to_subagent() -> None:
     """
 
     # Create a tracking agent to verify metadata is passed
-    def test_node(_state: MessagesState, config: RunnableConfig):
+    def test_node(_state: MessagesState, config: RunnableConfig) -> dict[str, list[BaseMessage]]:
         # Assert that the metadata is passed to the sub-agent
         assert config["metadata"]["test_key"] == "test_value"
         assert config["metadata"]["another_key"] == 123
@@ -596,7 +603,7 @@ def test_metadata_passed_to_subagent() -> None:
 
     # Create config with metadata
     test_metadata = {"test_key": "test_value", "another_key": 123}
-    config = {"metadata": test_metadata}
+    config: RunnableConfig = {"metadata": test_metadata}
 
     # Invoke the supervisor with the config
     result = supervisor.invoke({"messages": [HumanMessage(content="Test message")]}, config=config)
