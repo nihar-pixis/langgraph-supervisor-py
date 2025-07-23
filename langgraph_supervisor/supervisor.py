@@ -3,7 +3,7 @@ from typing import Any, Callable, Literal, Optional, Sequence, Type, Union, cast
 from uuid import UUID, uuid5
 
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
@@ -75,7 +75,10 @@ def _make_call_agent(
         if output_mode == "full_history":
             pass
         elif output_mode == "last_message":
-            messages = messages[-1:]
+            if isinstance(messages[-1], ToolMessage):
+                messages = messages[-2:]
+            else:
+                messages = messages[-1:]
 
         else:
             raise ValueError(
