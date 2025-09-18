@@ -32,6 +32,7 @@ from langgraph_supervisor.handoff import (
     _normalize_agent_name,
     create_handoff_back_messages,
     create_handoff_tool,
+    create_transfer_back_tool,
 )
 
 OutputMode = Literal["full_history", "last_message"]
@@ -63,6 +64,40 @@ def _supports_disable_parallel_tool_calls(model: LanguageModelLike) -> bool:
     return True
 
 
+def _add_transfer_back_tool_to_agent(
+    agent: Pregel[Any], supervisor_name: str
+) -> Pregel[Any]:
+    """Add the transfer_back_to_supervisor tool to an agent if it doesn't already have it."""
+    # Check if the agent already has the transfer back tool
+    transfer_back_tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
+    
+    # Get the agent's current tools
+    if hasattr(agent, 'tools') and agent.tools:
+        current_tools = list(agent.tools)
+        # Check if transfer back tool already exists
+        if any(hasattr(tool, 'name') and tool.name == transfer_back_tool_name for tool in current_tools):
+            return agent
+        
+        # Add the transfer back tool
+        transfer_back_tool = create_transfer_back_tool(supervisor_name)
+        new_tools = current_tools + [transfer_back_tool]
+        
+        # We need to recreate the agent with the new tools
+        # This is complex because we need to extract the original parameters
+        # For now, we'll modify the agent's tools directly if possible
+        try:
+            # Try to modify the agent's tools directly
+            if hasattr(agent, 'tools'):
+                agent.tools = new_tools
+            return agent
+        except:
+            # If we can't modify the tools directly, return the original agent
+            # The supervisor will handle this by not creating tool calls
+            return agent
+    
+    return agent
+
+
 def _make_call_agent(
     agent: Pregel[Any],
     output_mode: OutputMode,
@@ -91,7 +126,19 @@ def _make_call_agent(
             )
 
         if add_handoff_back_messages:
-            messages.extend(create_handoff_back_messages(agent.name, supervisor_name))
+            # Check if the agent has the transfer back tool
+            transfer_back_tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
+            has_transfer_back_tool = (
+                hasattr(agent, 'tools') and agent.tools and
+                any(hasattr(tool, 'name') and tool.name == transfer_back_tool_name for tool in agent.tools)
+            )
+            
+            # Only create tool calls if the agent has the transfer back tool
+            messages.extend(create_handoff_back_messages(
+                agent.name, 
+                supervisor_name, 
+                include_tool_call=has_transfer_back_tool
+            ))
 
         return {
             **output,
@@ -437,6 +484,10 @@ def create_supervisor(
     builder.add_node(supervisor_agent, destinations=tuple(agent_names) + (END,))
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
+        # Add transfer back tool to agent if add_handoff_back_messages is True
+        if add_handoff_back_messages:
+            agent = _add_transfer_back_tool_to_agent(agent, supervisor_name)
+        
         builder.add_node(
             agent.name,
             _make_call_agent(

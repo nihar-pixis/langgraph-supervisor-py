@@ -126,26 +126,79 @@ def create_handoff_tool(
 
 
 def create_handoff_back_messages(
-    agent_name: str, supervisor_name: str
+    agent_name: str, supervisor_name: str, include_tool_call: bool = True
 ) -> tuple[AIMessage, ToolMessage]:
     """Create a pair of (AIMessage, ToolMessage) to add to the message history when returning control to the supervisor."""
     tool_call_id = str(uuid.uuid4())
     tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
-    tool_calls = [ToolCall(name=tool_name, args={}, id=tool_call_id)]
-    return (
-        AIMessage(
-            content=f"Transferring back to {supervisor_name}",
-            tool_calls=tool_calls,
-            name=agent_name,
-            response_metadata={METADATA_KEY_IS_HANDOFF_BACK: True},
-        ),
-        ToolMessage(
+    
+    if include_tool_call:
+        tool_calls = [ToolCall(name=tool_name, args={}, id=tool_call_id)]
+        return (
+            AIMessage(
+                content=f"Transferring back to {supervisor_name}",
+                tool_calls=tool_calls,
+                name=agent_name,
+                response_metadata={METADATA_KEY_IS_HANDOFF_BACK: True},
+            ),
+            ToolMessage(
+                content=f"Successfully transferred back to {supervisor_name}",
+                name=tool_name,
+                tool_call_id=tool_call_id,
+                response_metadata={METADATA_KEY_IS_HANDOFF_BACK: True},
+            ),
+        )
+    else:
+        # Create simple messages without tool calls
+        return (
+            AIMessage(
+                content=f"Transferring back to {supervisor_name}",
+                name=agent_name,
+                response_metadata={METADATA_KEY_IS_HANDOFF_BACK: True},
+            ),
+            ToolMessage(
+                content=f"Successfully transferred back to {supervisor_name}",
+                name=tool_name,
+                tool_call_id=tool_call_id,
+                response_metadata={METADATA_KEY_IS_HANDOFF_BACK: True},
+            ),
+        )
+
+
+def create_transfer_back_tool(supervisor_name: str = "supervisor") -> BaseTool:
+    """Create a tool that allows an agent to transfer control back to the supervisor.
+
+    This tool is used by sub-agents to return control to the supervisor when they
+    have completed their task.
+
+    Args:
+        supervisor_name: The name of the supervisor node to transfer back to.
+
+    Returns:
+        BaseTool: The 'transfer_back_to_supervisor' tool.
+    """
+    tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
+    desc = f"Transfer control back to the {supervisor_name} when the task is complete."
+
+    @tool(tool_name, description=desc)
+    def transfer_back_to_supervisor(
+        state: Annotated[dict, InjectedState],
+        tool_call_id: Annotated[str, InjectedToolCallId],
+    ) -> Command:
+        tool_message = ToolMessage(
             content=f"Successfully transferred back to {supervisor_name}",
             name=tool_name,
             tool_call_id=tool_call_id,
             response_metadata={METADATA_KEY_IS_HANDOFF_BACK: True},
-        ),
-    )
+        )
+        return Command(
+            goto=supervisor_name,
+            graph=Command.PARENT,
+            update={**state, "messages": state["messages"] + [tool_message]},
+        )
+
+    transfer_back_to_supervisor.metadata = {METADATA_KEY_IS_HANDOFF_BACK: True}
+    return transfer_back_to_supervisor
 
 
 def create_forward_message_tool(supervisor_name: str = "supervisor") -> BaseTool:
