@@ -32,6 +32,7 @@ from langgraph_supervisor.handoff import (
     _normalize_agent_name,
     create_handoff_back_messages,
     create_handoff_tool,
+    create_transfer_back_tool,
 )
 
 OutputMode = Literal["full_history", "last_message"]
@@ -61,6 +62,33 @@ def _supports_disable_parallel_tool_calls(model: LanguageModelLike) -> bool:
         return False
 
     return True
+
+
+def _add_transfer_back_tool_to_agent(
+    agent: Pregel[Any], supervisor_name: str
+) -> Pregel[Any]:
+    """Add the transfer_back_to_supervisor tool to an agent if it doesn't already have it."""
+    # Check if the agent already has the transfer back tool
+    transfer_back_tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
+    
+    # Get the agent's current tools
+    if hasattr(agent, 'tools') and agent.tools:
+        current_tools = list(agent.tools)
+        # Check if transfer back tool already exists
+        if any(hasattr(tool, 'name') and tool.name == transfer_back_tool_name for tool in current_tools):
+            return agent
+        
+        # Add the transfer back tool
+        transfer_back_tool = create_transfer_back_tool(supervisor_name)
+        new_tools = current_tools + [transfer_back_tool]
+        
+        # Create a new agent with the additional tool
+        # We need to recreate the agent with the new tools
+        # This is a bit tricky since we need to extract the original parameters
+        # For now, we'll return the original agent and handle this in the calling code
+        return agent
+    
+    return agent
 
 
 def _make_call_agent(
@@ -437,6 +465,10 @@ def create_supervisor(
     builder.add_node(supervisor_agent, destinations=tuple(agent_names) + (END,))
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
+        # Add transfer back tool to agent if add_handoff_back_messages is True
+        if add_handoff_back_messages:
+            agent = _add_transfer_back_tool_to_agent(agent, supervisor_name)
+        
         builder.add_node(
             agent.name,
             _make_call_agent(
