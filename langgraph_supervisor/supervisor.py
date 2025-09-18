@@ -82,11 +82,18 @@ def _add_transfer_back_tool_to_agent(
         transfer_back_tool = create_transfer_back_tool(supervisor_name)
         new_tools = current_tools + [transfer_back_tool]
         
-        # Create a new agent with the additional tool
         # We need to recreate the agent with the new tools
-        # This is a bit tricky since we need to extract the original parameters
-        # For now, we'll return the original agent and handle this in the calling code
-        return agent
+        # This is complex because we need to extract the original parameters
+        # For now, we'll modify the agent's tools directly if possible
+        try:
+            # Try to modify the agent's tools directly
+            if hasattr(agent, 'tools'):
+                agent.tools = new_tools
+            return agent
+        except:
+            # If we can't modify the tools directly, return the original agent
+            # The supervisor will handle this by not creating tool calls
+            return agent
     
     return agent
 
@@ -477,6 +484,10 @@ def create_supervisor(
     builder.add_node(supervisor_agent, destinations=tuple(agent_names) + (END,))
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
+        # Add transfer back tool to agent if add_handoff_back_messages is True
+        if add_handoff_back_messages:
+            agent = _add_transfer_back_tool_to_agent(agent, supervisor_name)
+        
         builder.add_node(
             agent.name,
             _make_call_agent(
