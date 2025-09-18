@@ -126,7 +126,7 @@ def create_handoff_tool(
 
 
 def create_handoff_back_messages(
-    agent_name: str, supervisor_name: str, include_tool_call: bool = False
+    agent_name: str, supervisor_name: str, include_tool_call: bool = True
 ) -> tuple[AIMessage, ToolMessage]:
     """Create a pair of (AIMessage, ToolMessage) to add to the message history when returning control to the supervisor."""
     tool_call_id = str(uuid.uuid4())

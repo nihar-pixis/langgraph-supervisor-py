@@ -119,7 +119,19 @@ def _make_call_agent(
             )
 
         if add_handoff_back_messages:
-            messages.extend(create_handoff_back_messages(agent.name, supervisor_name))
+            # Check if the agent has the transfer back tool
+            transfer_back_tool_name = f"transfer_back_to_{_normalize_agent_name(supervisor_name)}"
+            has_transfer_back_tool = (
+                hasattr(agent, 'tools') and agent.tools and
+                any(hasattr(tool, 'name') and tool.name == transfer_back_tool_name for tool in agent.tools)
+            )
+            
+            # Only create tool calls if the agent has the transfer back tool
+            messages.extend(create_handoff_back_messages(
+                agent.name, 
+                supervisor_name, 
+                include_tool_call=has_transfer_back_tool
+            ))
 
         return {
             **output,
@@ -465,10 +477,6 @@ def create_supervisor(
     builder.add_node(supervisor_agent, destinations=tuple(agent_names) + (END,))
     builder.add_edge(START, supervisor_agent.name)
     for agent in agents:
-        # Add transfer back tool to agent if add_handoff_back_messages is True
-        if add_handoff_back_messages:
-            agent = _add_transfer_back_tool_to_agent(agent, supervisor_name)
-        
         builder.add_node(
             agent.name,
             _make_call_agent(
